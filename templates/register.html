@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register | ExpensePro</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='auth.css') }}">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-box">
+      <h1>💸 Expense<span>Pro</span></h1>
+      <h2>Create Your Account</h2>
+
+      <form method="POST">
+        <div class="input-group">
+          <input type="text" name="username" required>
+          <label>Username</label>
+        </div>
+
+        <div class="input-group">
+          <input type="password" name="password" required>
+          <label>Password</label>
+        </div>
+
+        <button type="submit" class="btn">Register</button>
+      </form>
+
+      <p class="switch">Already have an account? <a href="/login">Login</a></p>
+    </div>
+  </div>
+</body>
+</html>
