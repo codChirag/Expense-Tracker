@@ -1,111 +1,119 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 import sqlite3
+import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = "your_secret_key_here"  # change this for security
 
-# Database setup
+# ------------------ DATABASE SETUP ------------------
 def init_db():
-    conn = sqlite3.connect('database.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE,
-                    password TEXT
-                )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS expenses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER,
-                    title TEXT,
-                    amount REAL,
-                    type TEXT,
-                    date TEXT
-                )''')
-    conn.commit()
-    conn.close()
+    with sqlite3.connect("database.db") as conn:
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS expenses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                category TEXT,
+                amount REAL,
+                date TEXT
+            )
+        ''')
+        conn.commit()
+
+# ------------------ ROUTES ------------------
 
 @app.route('/')
 def home():
-    if 'user_id' in session:
+    if "user" in session:
         return redirect(url_for('dashboard'))
     return render_template('login.html')
 
-# Registration
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
 
-        conn = sqlite3.connect('database.db')
-        c = conn.cursor()
-        try:
-            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-            conn.commit()
-            return redirect(url_for('login'))
-        except:
-            return "User already exists!"
-        finally:
-            conn.close()
+        with sqlite3.connect("database.db") as conn:
+            cur = conn.cursor()
+            try:
+                cur.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+                conn.commit()
+                flash("Account created successfully! Please log in.", "success")
+                return redirect(url_for('login'))
+            except sqlite3.IntegrityError:
+                flash("Username already exists. Please try another.", "danger")
+                return redirect(url_for('register'))
     return render_template('register.html')
 
-# Login
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
 
-        conn = sqlite3.connect('database.db')
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-        user = c.fetchone()
-        conn.close()
+        with sqlite3.connect("database.db") as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+            user = cur.fetchone()
 
-        if user:
-            session['user_id'] = user[0]
-            return redirect(url_for('dashboard'))
-        else:
-            return "Invalid credentials"
+            if user:
+                session['user'] = username
+                flash("Login successful!", "success")
+                return redirect(url_for('dashboard'))
+            else:
+                flash("Invalid username or password.", "danger")
+                return redirect(url_for('login'))
     return render_template('login.html')
 
-# Dashboard
 @app.route('/dashboard')
 def dashboard():
-    if 'user_id' not in session:
+    if "user" not in session:
+        flash("Please log in to access your dashboard.", "warning")
         return redirect(url_for('login'))
 
-    conn = sqlite3.connect('database.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM expenses WHERE user_id=?", (session['user_id'],))
-    data = c.fetchall()
-    conn.close()
+    username = session["user"]
+    with sqlite3.connect("database.db") as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT category, amount, date FROM expenses WHERE username=?", (username,))
+        data = cur.fetchall()
 
-    return render_template('dashboard.html', expenses=data)
+    return render_template('dashboard.html', username=username, data=data)
 
-# Add Expense
 @app.route('/add', methods=['POST'])
 def add_expense():
-    title = request.form['title']
-    amount = float(request.form['amount'])
-    type = request.form['type']
+    if "user" not in session:
+        return redirect(url_for('login'))
+
+    category = request.form['category']
+    amount = request.form['amount']
     date = request.form['date']
+    username = session["user"]
 
-    conn = sqlite3.connect('database.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO expenses (user_id, title, amount, type, date) VALUES (?, ?, ?, ?, ?)",
-              (session['user_id'], title, amount, type, date))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect("database.db") as conn:
+        cur = conn.cursor()
+        cur.execute("INSERT INTO expenses (username, category, amount, date) VALUES (?, ?, ?, ?)",
+                    (username, category, amount, date))
+        conn.commit()
 
+    flash("Expense added successfully!", "success")
     return redirect(url_for('dashboard'))
 
-# Logout
 @app.route('/logout')
 def logout():
-    session.clear()
+    session.pop("user", None)
+    flash("Logged out successfully.", "info")
     return redirect(url_for('login'))
 
-if __name__ == '__main__':
-    init_db()
-    app.run(debug=True)
+# ------------------ RUN SERVER ------------------
+if __name__ == "__main__":
+    init_db()  # Ensure DB tables are created
+
+    port = int(os.environ.get("PORT", 5
